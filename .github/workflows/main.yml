@@ -71,8 +71,8 @@ jobs:
                   applicationId "com.example.wocabeehelper"
                   minSdk 26
                   targetSdk 34
-                  versionCode 11
-                  versionName "11.0"
+                  versionCode 12
+                  versionName "12.0"
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -104,12 +104,12 @@ jobs:
                   </activity>
               </application>
           </manifest>
-          EOF
 
           cat << 'EOF' > app/src/main/res/raw/bot.js
           (function() {
               if (window._wocaBusy) return "BUSY";
               const dict = {
+                  "nula": "zero", "zero": "nula",
                   "jedna": "one", "one": "jedna",
                   "dvě": "two", "dve": "two", "two": "dvě",
                   "tři": "three", "tri": "three", "three": "tři",
@@ -147,7 +147,6 @@ jobs:
               );
 
               if (allInputs.length === 0) {
-                  // Auto-click Continue / Next if on transition screen
                   const nextBtns = document.querySelectorAll(
                       'button, a, div.btn, span.btn'
                   );
@@ -203,7 +202,6 @@ jobs:
               }
 
               if (!ans) {
-                  // Fallback: scan lines of body.innerText
                   const lines = (document.body.innerText || '').split('\n');
                   for (const line of lines) {
                       const clean = line
