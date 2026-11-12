@@ -71,8 +71,8 @@ jobs:
                   applicationId "com.example.wocabeehelper"
                   minSdk 26
                   targetSdk 34
-                  versionCode 15
-                  versionName "15.0"
+                  versionCode 16
+                  versionName "16.0"
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -109,7 +109,7 @@ jobs:
           cat << 'EOF' > app/src/main/res/raw/bot.js
           (function() {
               if (window._wocaBusy) return "BUSY";
-              const isFast = (window._wocaFast === true);
+              const isTurbo = (window._wocaFast === true);
 
               function rand(min, max) {
                   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -291,7 +291,7 @@ jobs:
               }
 
               window._wocaBusy = true;
-              const startPause = isFast ? 5 : rand(350, 750);
+              const startPause = isTurbo ? rand(180, 320) : rand(380, 750);
 
               setTimeout(function() {
                   inp.focus();
@@ -313,13 +313,13 @@ jobs:
                           setVal(inp, sub);
                           inp.dispatchEvent(new KeyboardEvent('keyup', kd));
                           idx++;
-                          const nextCharDelay = isFast ? 2 : rand(65, 145);
+                          const nextCharDelay = isTurbo ? rand(35, 65) : rand(70, 145);
                           setTimeout(stepChar, nextCharDelay);
                       } else {
-                          const preSubmitDelay = isFast ? 15 : rand(220, 480);
+                          const preSubmitDelay = isTurbo ? rand(120, 220) : rand(240, 480);
                           setTimeout(function() {
                               clickCheckOnce();
-                              const afterSubmitWait = isFast ? 90 : rand(650, 1150);
+                              const afterSubmitWait = isTurbo ? rand(350, 550) : rand(650, 1150);
                               setTimeout(function() {
                                   window._wocaBusy = false;
                               }, afterSubmitWait);
@@ -329,7 +329,7 @@ jobs:
                   stepChar();
               }, startPause);
 
-              return (isFast ? "2ms: " : "SAFE: ") + ans;
+              return (isTurbo ? "TURBO: " : "SAFE: ") + ans;
           })();
           EOF
 
@@ -357,7 +357,7 @@ jobs:
               private lateinit var webView: WebView
               private lateinit var statusView: TextView
               private var isRunning = false
-              private var isFastMode = false
+              private var isTurboMode = false
               private val handler = Handler(Looper.getMainLooper())
               private var botScript = ""
 
@@ -387,7 +387,7 @@ jobs:
                       setTextColor(Color.WHITE)
                       setOnClickListener {
                           isRunning = true
-                          statusView.text = if (isFastMode) "FAST" else "SAFE"
+                          statusView.text = if (isTurboMode) "TURBO" else "SAFE"
                           loop()
                       }
                   }
@@ -410,9 +410,9 @@ jobs:
                       setBackgroundColor(Color.parseColor("#00695C"))
                       setTextColor(Color.WHITE)
                       setOnClickListener {
-                          isFastMode = !isFastMode
-                          if (isFastMode) {
-                              text = "FAST (2ms)"
+                          isTurboMode = !isTurboMode
+                          if (isTurboMode) {
+                              text = "TURBO SAFE"
                               setBackgroundColor(Color.parseColor("#E65100"))
                           } else {
                               text = "SAFE MODE"
@@ -473,14 +473,14 @@ jobs:
 
               private fun loop() {
                   if (!isRunning) return
-                  val modeJs = "window._wocaFast = $isFastMode;\n"
+                  val modeJs = "window._wocaFast = $isTurboMode;\n"
                   webView.evaluateJavascript(modeJs + botScript) { res ->
                       if (res != null && res != "null" && res != "\"BUSY\"") {
                           statusView.text = res.replace("\"", "")
                       }
                   }
                   CookieManager.getInstance().flush()
-                  val delay = if (isFastMode) 50L else 250L
+                  val delay = if (isTurboMode) 120L else 250L
                   handler.postDelayed({ loop() }, delay)
               }
 
