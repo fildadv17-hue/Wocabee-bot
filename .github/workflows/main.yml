@@ -71,8 +71,8 @@ jobs:
                   applicationId "com.example.wocabeehelper"
                   minSdk 26
                   targetSdk 34
-                  versionCode 13
-                  versionName "13.0"
+                  versionCode 14
+                  versionName "14.0"
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -109,6 +109,11 @@ jobs:
           cat << 'EOF' > app/src/main/res/raw/bot.js
           (function() {
               if (window._wocaBusy) return "BUSY";
+              const isFast = (window._wocaFast !== false);
+              const charDelay = isFast ? 2 : 30;
+              const checkDelay = isFast ? 15 : 100;
+              const cooldown = isFast ? 90 : 350;
+
               const dict = {
                   "nula": "zero", "zero": "nula",
                   "jedna": "one", "one": "jedna",
@@ -220,9 +225,8 @@ jobs:
 
               if (!ans) return "WAIT_WORD";
 
-              // Prevent double-submitting the exact same input before WocaBee clears the box
               if (curVal === ans.toLowerCase()) {
-                  return "SYNCING_POINTS";
+                  return "SYNCING";
               }
 
               function clickCheckOnce() {
@@ -305,19 +309,18 @@ jobs:
                       setVal(inp, sub);
                       inp.dispatchEvent(new KeyboardEvent('keyup', kd));
                       idx++;
-                      // Ultra-fast 5ms per character
-                      setTimeout(stepChar, 5);
+                      setTimeout(stepChar, charDelay);
                   } else {
                       setTimeout(function() {
                           clickCheckOnce();
                           setTimeout(function() {
                               window._wocaBusy = false;
-                          }, 120);
-                      }, 20);
+                          }, cooldown);
+                      }, checkDelay);
                   }
               }
               stepChar();
-              return "FAST: " + foundWord + " -> " + ans;
+              return (isFast ? "2ms: " : "NORM: ") + ans;
           })();
           EOF
 
@@ -345,6 +348,7 @@ jobs:
               private lateinit var webView: WebView
               private lateinit var statusView: TextView
               private var isRunning = false
+              private var isFastMode = true
               private val handler = Handler(Looper.getMainLooper())
               private var botScript = ""
 
@@ -364,33 +368,53 @@ jobs:
                       orientation = LinearLayout.HORIZONTAL
                       gravity = Gravity.CENTER_VERTICAL
                       setBackgroundColor(Color.parseColor("#212121"))
-                      setPadding(10, 10, 10, 10)
+                      setPadding(8, 8, 8, 8)
                   }
 
                   val startBtn = Button(this).apply {
                       text = "START"
+                      textSize = 12f
                       setBackgroundColor(Color.parseColor("#2E7D32"))
                       setTextColor(Color.WHITE)
                       setOnClickListener {
                           isRunning = true
-                          statusView.text = "TURBO ON"
+                          statusView.text = if (isFastMode) "FAST" else "NORM"
                           loop()
                       }
                   }
 
                   val stopBtn = Button(this).apply {
                       text = "STOP"
+                      textSize = 12f
                       setBackgroundColor(Color.parseColor("#C62828"))
                       setTextColor(Color.WHITE)
                       setOnClickListener {
                           isRunning = false
                           CookieManager.getInstance().flush()
-                          statusView.text = "STOPPED & SAVED"
+                          statusView.text = "STOPPED"
+                      }
+                  }
+
+                  val modeBtn = Button(this).apply {
+                      text = "FAST (2ms)"
+                      textSize = 12f
+                      setBackgroundColor(Color.parseColor("#E65100"))
+                      setTextColor(Color.WHITE)
+                      setOnClickListener {
+                          isFastMode = !isFastMode
+                          if (isFastMode) {
+                              text = "FAST (2ms)"
+                              setBackgroundColor(Color.parseColor("#E65100"))
+                          } else {
+                              text = "NORMAL"
+                              setBackgroundColor(Color.parseColor("#455A64"))
+                          }
                       }
                   }
 
                   val syncBtn = Button(this).apply {
                       text = "SAVE"
+                      textSize = 12f
                       setBackgroundColor(Color.parseColor("#1565C0"))
                       setTextColor(Color.WHITE)
                       setOnClickListener {
@@ -399,7 +423,7 @@ jobs:
                           webView.reload()
                           Toast.makeText(
                               this@MainActivity,
-                              "Synced with WocaBee Server!",
+                              "Points Saved!",
                               Toast.LENGTH_SHORT
                           ).show()
                       }
@@ -408,12 +432,13 @@ jobs:
                   statusView = TextView(this).apply {
                       text = "READY"
                       setTextColor(Color.WHITE)
-                      textSize = 12f
-                      setPadding(16, 0, 0, 0)
+                      textSize = 11f
+                      setPadding(10, 0, 0, 0)
                   }
 
                   bar.addView(startBtn)
                   bar.addView(stopBtn)
+                  bar.addView(modeBtn)
                   bar.addView(syncBtn)
                   bar.addView(statusView)
 
@@ -439,14 +464,15 @@ jobs:
 
               private fun loop() {
                   if (!isRunning) return
-                  webView.evaluateJavascript(botScript) { res ->
+                  val modeJs = "window._wocaFast = $isFastMode;\n"
+                  webView.evaluateJavascript(modeJs + botScript) { res ->
                       if (res != null && res != "null" && res != "\"BUSY\"") {
                           statusView.text = res.replace("\"", "")
                       }
                   }
                   CookieManager.getInstance().flush()
-                  // Runs every 80ms for maximum server-safe speed
-                  handler.postDelayed({ loop() }, 80)
+                  val delay = if (isFastMode) 50L else 200L
+                  handler.postDelayed({ loop() }, delay)
               }
 
               override fun onPause() {
