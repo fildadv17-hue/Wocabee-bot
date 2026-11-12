@@ -104,6 +104,7 @@ jobs:
                   </activity>
               </application>
           </manifest>
+          EOF
 
           cat << 'EOF' > app/src/main/res/raw/bot.js
           (function() {
