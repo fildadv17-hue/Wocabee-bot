@@ -71,8 +71,8 @@ jobs:
                   applicationId "com.example.wocabeehelper"
                   minSdk 26
                   targetSdk 34
-                  versionCode 10
-                  versionName "10.0"
+                  versionCode 11
+                  versionName "11.0"
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -108,7 +108,7 @@ jobs:
 
           cat << 'EOF' > app/src/main/res/raw/bot.js
           (function() {
-              if (window._wocaBusy) return;
+              if (window._wocaBusy) return "BUSY";
               const dict = {
                   "jedna": "one", "one": "jedna",
                   "dvě": "two", "dve": "two", "two": "dvě",
@@ -122,87 +122,125 @@ jobs:
                   "deset": "ten", "ten": "deset"
               };
 
+              function isVis(el) {
+                  if (!el) return false;
+                  const r = el.getBoundingClientRect();
+                  const s = window.getComputedStyle(el);
+                  return r.width > 0 &&
+                      r.height > 0 &&
+                      s.visibility !== 'hidden' &&
+                      s.display !== 'none';
+              }
+
               const allInputs = Array.from(
-                  document.querySelectorAll(
-                      '#translateWordAnswer, input[type="text"], textarea'
-                  )
+                  document.querySelectorAll('input, textarea')
               ).filter(e =>
-                  e.offsetParent !== null &&
+                  isVis(e) &&
                   !e.disabled &&
                   !e.readOnly &&
-                  e.type !== 'search'
+                  e.type !== 'hidden' &&
+                  e.type !== 'submit' &&
+                  e.type !== 'button' &&
+                  e.type !== 'checkbox' &&
+                  e.type !== 'radio' &&
+                  e.type !== 'password'
               );
 
-              if (allInputs.length === 0) return;
+              if (allInputs.length === 0) {
+                  // Auto-click Continue / Next if on transition screen
+                  const nextBtns = document.querySelectorAll(
+                      'button, a, div.btn, span.btn'
+                  );
+                  for (const b of nextBtns) {
+                      if (!isVis(b)) continue;
+                      const t = (b.innerText || '').trim().toLowerCase();
+                      if (
+                          t === 'pokračovat' ||
+                          t === 'continue' ||
+                          t === 'další' ||
+                          t === 'next'
+                      ) {
+                          b.click();
+                          return "CLICKED_CONTINUE";
+                      }
+                  }
+                  return "NO_INPUT_BOX";
+              }
+
               const inp = allInputs[0];
               const ir = inp.getBoundingClientRect();
+              const curVal = (inp.value || '').trim().toLowerCase();
 
               let ans = null;
+              let foundWord = "";
               let bestDist = 999999;
 
-              const qSelectors = [
-                  '#translateWordQuestion',
-                  '#q_word',
-                  '.question-word',
-                  '.word-to-translate'
-              ];
-              for (const sel of qSelectors) {
-                  const wq = document.querySelector(sel);
-                  if (wq && wq.offsetParent !== null && wq.innerText) {
-                      const wc = wq.innerText.trim().toLowerCase();
-                      if (dict[wc]) {
-                          ans = dict[wc];
-                          break;
+              const allEls = document.querySelectorAll(
+                  'div, span, p, h1, h2, h3, h4, h5, b, strong, label, td'
+              );
+              for (const el of allEls) {
+                  if (!isVis(el)) continue;
+                  if (el === inp || el.contains(inp)) continue;
+                  const raw = (el.innerText || '')
+                      .trim()
+                      .toLowerCase()
+                      .replace(/[?.!,]/g, '')
+                      .trim();
+                  if (!raw || raw.length > 15) continue;
+                  if (raw === curVal) continue;
+
+                  if (dict[raw]) {
+                      const r = el.getBoundingClientRect();
+                      const dy = Math.abs(r.bottom - ir.top);
+                      const dx = Math.abs(r.left - ir.left) * 0.2;
+                      const dist = dy + dx;
+                      if (dist < bestDist) {
+                          bestDist = dist;
+                          ans = dict[raw];
+                          foundWord = raw;
                       }
                   }
               }
 
               if (!ans) {
-                  const nodes = document.querySelectorAll(
-                      'div, span, p, h1, h2, h3, h4, b, strong'
-                  );
-                  for (const el of nodes) {
-                      if (el.offsetParent === null) continue;
-                      if (el.children.length > 0) continue;
-                      const r = el.getBoundingClientRect();
-                      if (r.width === 0 || r.height === 0) continue;
-                      const raw = (el.innerText || '')
+                  // Fallback: scan lines of body.innerText
+                  const lines = (document.body.innerText || '').split('\n');
+                  for (const line of lines) {
+                      const clean = line
                           .trim()
                           .toLowerCase()
-                          .replace(/[?.!,]/g, '');
-                      if (dict[raw]) {
-                          const dy = Math.abs(r.bottom - ir.top);
-                          const dx = Math.abs(r.left - ir.left) * 0.2;
-                          const dist = dy + dx;
-                          if (dist < bestDist) {
-                              bestDist = dist;
-                              ans = dict[raw];
-                          }
+                          .replace(/[?.!,]/g, '')
+                          .trim();
+                      if (clean && clean !== curVal && dict[clean]) {
+                          ans = dict[clean];
+                          foundWord = clean;
+                          break;
                       }
                   }
               }
 
-              if (!ans) return;
+              if (!ans) return "WAITING_FOR_WORD";
 
               function clickCheck() {
-                  const btnSels = [
+                  const selList = [
                       '#translateWordSubmitBtn',
                       '#submitBtn',
+                      '#checkBtn',
                       'button[type="submit"]',
                       '.btn-success'
                   ];
-                  for (const s of btnSels) {
+                  for (const s of selList) {
                       const b = document.querySelector(s);
-                      if (b && b.offsetParent !== null && !b.disabled) {
+                      if (isVis(b) && !b.disabled) {
                           b.click();
                           return;
                       }
                   }
                   const btns = document.querySelectorAll(
-                      'button, a, div.btn, span.btn, input[type="button"]'
+                      'button, a, div.btn, span.btn, input[type="button"], i.fa-check'
                   );
                   for (const b of btns) {
-                      if (b.offsetParent === null) continue;
+                      if (!isVis(b)) continue;
                       const t = (
                           b.innerText || b.value || b.className || ''
                       ).toLowerCase();
@@ -211,8 +249,10 @@ jobs:
                           t.includes('overiť') ||
                           t.includes('check') ||
                           t.includes('submit') ||
+                          t.includes('potvrdit') ||
                           t.includes('pokračovat') ||
-                          t.includes('continue')
+                          t.includes('continue') ||
+                          t.includes('fa-check')
                       ) {
                           b.click();
                           return;
@@ -230,40 +270,58 @@ jobs:
                   inp.dispatchEvent(new KeyboardEvent('keyup', ev));
               }
 
-              if (inp.value.trim().toLowerCase() === ans.toLowerCase()) {
+              function setVal(el, val) {
+                  const proto = window.HTMLInputElement.prototype;
+                  const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+                  if (desc && desc.set) {
+                      desc.set.call(el, val);
+                  } else {
+                      el.value = val;
+                  }
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+
+              if (curVal === ans.toLowerCase()) {
                   clickCheck();
-                  return;
+                  return "CLICKED_CHECK: " + ans;
               }
 
               window._wocaBusy = true;
               inp.focus();
-              inp.value = '';
-              let idx = 0;
+              inp.click();
+              setVal(inp, '');
 
+              let idx = 0;
               function stepChar() {
                   if (idx < ans.length) {
-                      inp.value += ans[idx];
-                      inp.dispatchEvent(
-                          new Event('input', { bubbles: true })
-                      );
-                      inp.dispatchEvent(
-                          new KeyboardEvent('keyup', { bubbles: true })
-                      );
+                      const ch = ans[idx];
+                      const sub = ans.substring(0, idx + 1);
+                      inp.focus();
+                      const kd = {
+                          key: ch,
+                          char: ch,
+                          keyCode: ch.charCodeAt(0),
+                          which: ch.charCodeAt(0),
+                          bubbles: true
+                      };
+                      inp.dispatchEvent(new KeyboardEvent('keydown', kd));
+                      inp.dispatchEvent(new KeyboardEvent('keypress', kd));
+                      setVal(inp, sub);
+                      inp.dispatchEvent(new KeyboardEvent('keyup', kd));
                       idx++;
-                      setTimeout(stepChar, 25);
+                      setTimeout(stepChar, 30);
                   } else {
-                      inp.dispatchEvent(
-                          new Event('change', { bubbles: true })
-                      );
                       setTimeout(function() {
                           clickCheck();
                           setTimeout(function() {
                               window._wocaBusy = false;
-                          }, 300);
-                      }, 80);
+                          }, 350);
+                      }, 100);
                   }
               }
               stepChar();
+              return "TYPING: " + foundWord + " -> " + ans;
           })();
           EOF
 
@@ -281,11 +339,12 @@ jobs:
           import android.webkit.WebViewClient
           import android.widget.Button
           import android.widget.LinearLayout
-          import android.widget.Toast
+          import android.widget.TextView
           import androidx.appcompat.app.AppCompatActivity
 
           class MainActivity : AppCompatActivity() {
               private lateinit var webView: WebView
+              private lateinit var statusView: TextView
               private var isRunning = false
               private val handler = Handler(Looper.getMainLooper())
               private var botScript = ""
@@ -304,7 +363,7 @@ jobs:
 
                   val bar = LinearLayout(this).apply {
                       orientation = LinearLayout.HORIZONTAL
-                      gravity = Gravity.CENTER
+                      gravity = Gravity.CENTER_VERTICAL
                       setBackgroundColor(Color.parseColor("#212121"))
                       setPadding(12, 12, 12, 12)
                   }
@@ -315,11 +374,7 @@ jobs:
                       setTextColor(Color.WHITE)
                       setOnClickListener {
                           isRunning = true
-                          Toast.makeText(
-                              this@MainActivity,
-                              "BOT STARTED",
-                              Toast.LENGTH_SHORT
-                          ).show()
+                          statusView.text = "RUNNING..."
                           loop()
                       }
                   }
@@ -330,16 +385,20 @@ jobs:
                       setTextColor(Color.WHITE)
                       setOnClickListener {
                           isRunning = false
-                          Toast.makeText(
-                              this@MainActivity,
-                              "BOT STOPPED",
-                              Toast.LENGTH_SHORT
-                          ).show()
+                          statusView.text = "STOPPED"
                       }
+                  }
+
+                  statusView = TextView(this).apply {
+                      text = "STOPPED"
+                      setTextColor(Color.WHITE)
+                      textSize = 13f
+                      setPadding(20, 0, 0, 0)
                   }
 
                   bar.addView(startBtn)
                   bar.addView(stopBtn)
+                  bar.addView(statusView)
 
                   webView = WebView(this).apply {
                       settings.javaScriptEnabled = true
@@ -356,7 +415,11 @@ jobs:
 
               private fun loop() {
                   if (!isRunning) return
-                  webView.evaluateJavascript(botScript, null)
+                  webView.evaluateJavascript(botScript) { res ->
+                      if (res != null && res != "null" && res != "\"BUSY\"") {
+                          statusView.text = res.replace("\"", "")
+                      }
+                  }
                   handler.postDelayed({ loop() }, 200)
               }
           }
