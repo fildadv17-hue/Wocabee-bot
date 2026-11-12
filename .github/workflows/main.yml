@@ -24,7 +24,7 @@ jobs:
         run: |
           rm -rf *
           mkdir -p app/src/main/java/com/example/wocabeehelper
-          mkdir -p app/src/main/res/xml
+          mkdir -p app/src/main/res/raw
 
           cat << 'EOF' > gradle.properties
           android.useAndroidX=true
@@ -71,8 +71,8 @@ jobs:
                   applicationId "com.example.wocabeehelper"
                   minSdk 26
                   targetSdk 34
-                  versionCode 9
-                  versionName "9.0"
+                  versionCode 10
+                  versionName "10.0"
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -89,7 +89,6 @@ jobs:
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET" />
-              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
               <application
                   android:allowBackup="true"
                   android:label="WocaAuto"
@@ -103,328 +102,263 @@ jobs:
                           <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
-                  <service
-                      android:name=".WocaAccessibilityService"
-                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-                      android:exported="true">
-                      <intent-filter>
-                          <action android:name="android.accessibilityservice.AccessibilityService" />
-                      </intent-filter>
-                      <meta-data
-                          android:name="android.accessibilityservice"
-                          android:resource="@xml/accessibility_service_config" />
-                  </service>
               </application>
           </manifest>
           EOF
 
-          cat << 'EOF' > app/src/main/res/xml/accessibility_service_config.xml
-          <accessibility-service
-              xmlns:android="http://schemas.android.com/apk/res/android"
-              android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
-              android:accessibilityFeedbackType="feedbackGeneric"
-              android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagRequestEnhancedWebAccessibility"
-              android:canPerformGestures="true"
-              android:canRetrieveWindowContent="true"
-              android:notificationTimeout="50" />
+          cat << 'EOF' > app/src/main/res/raw/bot.js
+          (function() {
+              if (window._wocaBusy) return;
+              const dict = {
+                  "jedna": "one", "one": "jedna",
+                  "dvě": "two", "dve": "two", "two": "dvě",
+                  "tři": "three", "tri": "three", "three": "tři",
+                  "čtyři": "four", "ctyri": "four", "four": "čtyři",
+                  "pět": "five", "pet": "five", "five": "pět",
+                  "šest": "six", "sest": "six", "six": "šest",
+                  "sedm": "seven", "seven": "sedm",
+                  "osm": "eight", "eight": "osm",
+                  "devět": "nine", "devet": "nine", "nine": "devět",
+                  "deset": "ten", "ten": "deset"
+              };
+
+              const allInputs = Array.from(
+                  document.querySelectorAll(
+                      '#translateWordAnswer, input[type="text"], textarea'
+                  )
+              ).filter(e =>
+                  e.offsetParent !== null &&
+                  !e.disabled &&
+                  !e.readOnly &&
+                  e.type !== 'search'
+              );
+
+              if (allInputs.length === 0) return;
+              const inp = allInputs[0];
+              const ir = inp.getBoundingClientRect();
+
+              let ans = null;
+              let bestDist = 999999;
+
+              const qSelectors = [
+                  '#translateWordQuestion',
+                  '#q_word',
+                  '.question-word',
+                  '.word-to-translate'
+              ];
+              for (const sel of qSelectors) {
+                  const wq = document.querySelector(sel);
+                  if (wq && wq.offsetParent !== null && wq.innerText) {
+                      const wc = wq.innerText.trim().toLowerCase();
+                      if (dict[wc]) {
+                          ans = dict[wc];
+                          break;
+                      }
+                  }
+              }
+
+              if (!ans) {
+                  const nodes = document.querySelectorAll(
+                      'div, span, p, h1, h2, h3, h4, b, strong'
+                  );
+                  for (const el of nodes) {
+                      if (el.offsetParent === null) continue;
+                      if (el.children.length > 0) continue;
+                      const r = el.getBoundingClientRect();
+                      if (r.width === 0 || r.height === 0) continue;
+                      const raw = (el.innerText || '')
+                          .trim()
+                          .toLowerCase()
+                          .replace(/[?.!,]/g, '');
+                      if (dict[raw]) {
+                          const dy = Math.abs(r.bottom - ir.top);
+                          const dx = Math.abs(r.left - ir.left) * 0.2;
+                          const dist = dy + dx;
+                          if (dist < bestDist) {
+                              bestDist = dist;
+                              ans = dict[raw];
+                          }
+                      }
+                  }
+              }
+
+              if (!ans) return;
+
+              function clickCheck() {
+                  const btnSels = [
+                      '#translateWordSubmitBtn',
+                      '#submitBtn',
+                      'button[type="submit"]',
+                      '.btn-success'
+                  ];
+                  for (const s of btnSels) {
+                      const b = document.querySelector(s);
+                      if (b && b.offsetParent !== null && !b.disabled) {
+                          b.click();
+                          return;
+                      }
+                  }
+                  const btns = document.querySelectorAll(
+                      'button, a, div.btn, span.btn, input[type="button"]'
+                  );
+                  for (const b of btns) {
+                      if (b.offsetParent === null) continue;
+                      const t = (
+                          b.innerText || b.value || b.className || ''
+                      ).toLowerCase();
+                      if (
+                          t.includes('ověřit') ||
+                          t.includes('overiť') ||
+                          t.includes('check') ||
+                          t.includes('submit') ||
+                          t.includes('pokračovat') ||
+                          t.includes('continue')
+                      ) {
+                          b.click();
+                          return;
+                      }
+                  }
+                  const ev = {
+                      key: 'Enter',
+                      code: 'Enter',
+                      keyCode: 13,
+                      which: 13,
+                      bubbles: true
+                  };
+                  inp.dispatchEvent(new KeyboardEvent('keydown', ev));
+                  inp.dispatchEvent(new KeyboardEvent('keypress', ev));
+                  inp.dispatchEvent(new KeyboardEvent('keyup', ev));
+              }
+
+              if (inp.value.trim().toLowerCase() === ans.toLowerCase()) {
+                  clickCheck();
+                  return;
+              }
+
+              window._wocaBusy = true;
+              inp.focus();
+              inp.value = '';
+              let idx = 0;
+
+              function stepChar() {
+                  if (idx < ans.length) {
+                      inp.value += ans[idx];
+                      inp.dispatchEvent(
+                          new Event('input', { bubbles: true })
+                      );
+                      inp.dispatchEvent(
+                          new KeyboardEvent('keyup', { bubbles: true })
+                      );
+                      idx++;
+                      setTimeout(stepChar, 25);
+                  } else {
+                      inp.dispatchEvent(
+                          new Event('change', { bubbles: true })
+                      );
+                      setTimeout(function() {
+                          clickCheck();
+                          setTimeout(function() {
+                              window._wocaBusy = false;
+                          }, 300);
+                      }, 80);
+                  }
+              }
+              stepChar();
+          })();
           EOF
 
           cat << 'EOF' > app/src/main/java/com/example/wocabeehelper/MainActivity.kt
           package com.example.wocabeehelper
 
-          import android.content.Intent
+          import android.annotation.SuppressLint
           import android.graphics.Color
           import android.os.Bundle
-          import android.provider.Settings
+          import android.os.Handler
+          import android.os.Looper
           import android.view.Gravity
+          import android.webkit.WebChromeClient
+          import android.webkit.WebView
+          import android.webkit.WebViewClient
           import android.widget.Button
           import android.widget.LinearLayout
-          import android.widget.TextView
+          import android.widget.Toast
           import androidx.appcompat.app.AppCompatActivity
 
           class MainActivity : AppCompatActivity() {
+              private lateinit var webView: WebView
+              private var isRunning = false
+              private val handler = Handler(Looper.getMainLooper())
+              private var botScript = ""
+
+              @SuppressLint("SetJavaScriptEnabled")
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  val layout = LinearLayout(this).apply {
+
+                  botScript = resources.openRawResource(R.raw.bot)
+                      .bufferedReader()
+                      .use { it.readText() }
+
+                  val root = LinearLayout(this).apply {
                       orientation = LinearLayout.VERTICAL
-                      gravity = Gravity.CENTER
-                      setPadding(50, 50, 50, 50)
                   }
-                  val status = TextView(this).apply {
-                      text = "WocaAuto (1-10 + Auto Check)\nStatus: STOPPED"
-                      textSize = 18f
+
+                  val bar = LinearLayout(this).apply {
+                      orientation = LinearLayout.HORIZONTAL
                       gravity = Gravity.CENTER
-                      setPadding(0, 0, 0, 40)
+                      setBackgroundColor(Color.parseColor("#212121"))
+                      setPadding(12, 12, 12, 12)
                   }
+
                   val startBtn = Button(this).apply {
                       text = "START"
                       setBackgroundColor(Color.parseColor("#2E7D32"))
                       setTextColor(Color.WHITE)
                       setOnClickListener {
-                          WocaAccessibilityService.isAutoRunning = true
-                          status.text = "Status: RUNNING"
+                          isRunning = true
+                          Toast.makeText(
+                              this@MainActivity,
+                              "BOT STARTED",
+                              Toast.LENGTH_SHORT
+                          ).show()
+                          loop()
                       }
                   }
+
                   val stopBtn = Button(this).apply {
                       text = "STOP"
                       setBackgroundColor(Color.parseColor("#C62828"))
                       setTextColor(Color.WHITE)
                       setOnClickListener {
-                          WocaAccessibilityService.isAutoRunning = false
-                          status.text = "Status: STOPPED"
+                          isRunning = false
+                          Toast.makeText(
+                              this@MainActivity,
+                              "BOT STOPPED",
+                              Toast.LENGTH_SHORT
+                          ).show()
                       }
                   }
-                  val accBtn = Button(this).apply {
-                      text = "OPEN ACCESSIBILITY SETTINGS"
-                      setOnClickListener {
-                          val i = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                          startActivity(i)
-                      }
+
+                  bar.addView(startBtn)
+                  bar.addView(stopBtn)
+
+                  webView = WebView(this).apply {
+                      settings.javaScriptEnabled = true
+                      settings.domStorageEnabled = true
+                      webViewClient = WebViewClient()
+                      webChromeClient = WebChromeClient()
+                      loadUrl("https://wocabee.app/app")
                   }
-                  layout.addView(status)
-                  layout.addView(startBtn)
-                  layout.addView(stopBtn)
-                  layout.addView(accBtn)
-                  setContentView(layout)
-              }
-          }
-          EOF
 
-          cat << 'EOF' > app/src/main/java/com/example/wocabeehelper/WocaAccessibilityService.kt
-          package com.example.wocabeehelper
-
-          import android.accessibilityservice.AccessibilityService
-          import android.graphics.Color
-          import android.graphics.PixelFormat
-          import android.graphics.Rect
-          import android.os.Build
-          import android.os.Bundle
-          import android.os.Handler
-          import android.os.Looper
-          import android.view.Gravity
-          import android.view.MotionEvent
-          import android.view.WindowManager
-          import android.view.accessibility.AccessibilityEvent
-          import android.view.accessibility.AccessibilityNodeInfo
-          import android.widget.Button
-          import kotlin.math.abs
-
-          class WocaAccessibilityService : AccessibilityService() {
-              companion object {
-                  var isAutoRunning = false
-                  val dictionary = mapOf(
-                      "jedna" to "one", "one" to "jedna",
-                      "dvě" to "two", "dve" to "two", "two" to "dvě",
-                      "tři" to "three", "tri" to "three", "three" to "tři",
-                      "čtyři" to "four", "ctyri" to "four", "four" to "čtyři",
-                      "pět" to "five", "pet" to "five", "five" to "pět",
-                      "šest" to "six", "sest" to "six", "six" to "šest",
-                      "sedm" to "seven", "seven" to "sedm",
-                      "osm" to "eight", "eight" to "osm",
-                      "devět" to "nine", "devet" to "nine", "nine" to "devět",
-                      "deset" to "ten", "ten" to "deset"
-                  )
-              }
-
-              private lateinit var wm: WindowManager
-              private lateinit var btn: Button
-              private val handler = Handler(Looper.getMainLooper())
-              private var typing = false
-
-              override fun onServiceConnected() {
-                  super.onServiceConnected()
-                  wm = getSystemService(WINDOW_SERVICE) as WindowManager
-                  val p = WindowManager.LayoutParams(
-                      WindowManager.LayoutParams.WRAP_CONTENT,
-                      WindowManager.LayoutParams.WRAP_CONTENT,
-                      WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                      PixelFormat.TRANSLUCENT
-                  ).apply {
-                      gravity = Gravity.TOP or Gravity.START
-                      x = 40
-                      y = 300
-                  }
-                  btn = Button(this).apply {
-                      text = "START"
-                      setBackgroundColor(Color.parseColor("#2E7D32"))
-                      setTextColor(Color.WHITE)
-                      var ix = 0; var iy = 0; var tx = 0f; var ty = 0f
-                      var moved = false
-                      setOnTouchListener { _, ev ->
-                          when (ev.action) {
-                              MotionEvent.ACTION_DOWN -> {
-                                  ix = p.x; iy = p.y
-                                  tx = ev.rawX; ty = ev.rawY
-                                  moved = false; true
-                              }
-                              MotionEvent.ACTION_MOVE -> {
-                                  val dx = (ev.rawX - tx).toInt()
-                                  val dy = (ev.rawY - ty).toInt()
-                                  if (abs(dx) > 10 || abs(dy) > 10) moved = true
-                                  p.x = ix + dx; p.y = iy + dy
-                                  wm.updateViewLayout(this, p); true
-                              }
-                              MotionEvent.ACTION_UP -> {
-                                  if (!moved) performClick()
-                                  true
-                              }
-                              else -> false
-                          }
-                      }
-                      setOnClickListener {
-                          isAutoRunning = !isAutoRunning
-                          syncUI()
-                      }
-                  }
-                  wm.addView(btn, p)
-                  loop()
-              }
-
-              private fun syncUI() {
-                  btn.text = if (isAutoRunning) "STOP" else "START"
-                  val c = if (isAutoRunning) "#C62828" else "#2E7D32"
-                  btn.setBackgroundColor(Color.parseColor(c))
+                  root.addView(bar, LinearLayout.LayoutParams(-1, -2))
+                  root.addView(webView, LinearLayout.LayoutParams(-1, 0, 1f))
+                  setContentView(root)
               }
 
               private fun loop() {
-                  syncUI()
-                  if (isAutoRunning && !typing) {
-                      rootInActiveWindow?.let { solve(it) }
-                  }
-                  handler.postDelayed({ loop() }, 180)
+                  if (!isRunning) return
+                  webView.evaluateJavascript(botScript, null)
+                  handler.postDelayed({ loop() }, 200)
               }
-
-              private fun clickUp(n: AccessibilityNodeInfo?) {
-                  var c = n
-                  while (c != null) {
-                      if (c.isClickable) {
-                          c.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                          return
-                      }
-                      c = c.parent
-                  }
-                  n?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-              }
-
-              private fun solve(root: AccessibilityNodeInfo) {
-                  val cands = mutableListOf<Pair<String, Rect>>()
-                  var inp: AccessibilityNodeInfo? = null
-                  var sub: AccessibilityNodeInfo? = null
-                  var belowBtn: AccessibilityNodeInfo? = null
-                  val ir = Rect()
-
-                  fun findInp(n: AccessibilityNodeInfo?) {
-                      if (n == null) return
-                      val cls = n.className?.toString() ?: ""
-                      if ((n.isEditable || cls.contains("EditText")) &&
-                          n.isVisibleToUser
-                      ) {
-                          inp = n
-                          n.getBoundsInScreen(ir)
-                      }
-                      for (i in 0 until n.childCount) {
-                          findInp(n.getChild(i))
-                      }
-                  }
-                  findInp(root)
-                  val target = inp ?: return
-                  val cur = target.text?.toString()?.trim()?.lowercase() ?: ""
-
-                  fun walk(n: AccessibilityNodeInfo?) {
-                      if (n == null || !n.isVisibleToUser || n == target) return
-                      val t = (n.text?.toString()
-                          ?: n.contentDescription?.toString() ?: "").trim()
-                      val id = (n.viewIdResourceName ?: "").lowercase()
-                      val r = Rect()
-                      n.getBoundsInScreen(r)
-
-                      if (t.isNotEmpty()) {
-                          val cl = t.lowercase()
-                              .replace("?", "")
-                              .replace("!", "")
-                              .replace(".", "")
-                              .trim()
-                          if (cl != cur && dictionary.containsKey(cl)) {
-                              cands.add(Pair(cl, r))
-                          }
-                          if (t.contains("Check", true) ||
-                              t.contains("Submit", true) ||
-                              t.contains("Ověřit", true) ||
-                              t.contains("Overiť", true) ||
-                              t.contains("Pokračovat", true) ||
-                              t.contains("Continue", true) ||
-                              id.contains("submit") ||
-                              id.contains("check")
-                          ) {
-                              sub = n
-                          }
-                      }
-                      val cls = n.className?.toString() ?: ""
-                      if ((n.isClickable || cls.contains("Button")) &&
-                          r.top >= ir.bottom - 20 &&
-                          r.top < ir.bottom + 450
-                      ) {
-                          if (belowBtn == null) belowBtn = n
-                      }
-                      for (i in 0 until n.childCount) walk(n.getChild(i))
-                  }
-                  walk(root)
-
-                  val best = cands.minByOrNull { (_, r) ->
-                      abs(r.bottom - ir.top) + abs(r.left - ir.left) / 4
-                  }?.first ?: return
-
-                  val ans = dictionary[best] ?: return
-                  val checkBtn = sub ?: belowBtn
-
-                  if (cur == ans.lowercase()) {
-                      clickUp(checkBtn)
-                      if (Build.VERSION.SDK_INT >= 30) {
-                          val act = AccessibilityNodeInfo
-                              .AccessibilityAction.ACTION_IME_ENTER.id
-                          target.performAction(act)
-                      }
-                      return
-                  }
-                  typeWord(target, ans, checkBtn)
-              }
-
-              private fun typeWord(
-                  inp: AccessibilityNodeInfo,
-                  w: String,
-                  sub: AccessibilityNodeInfo?
-              ) {
-                  typing = true
-                  inp.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-                  inp.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                  for (i in 1..w.length) {
-                      val part = w.substring(0, i)
-                      handler.postDelayed({
-                          val b = Bundle()
-                          val k = AccessibilityNodeInfo
-                              .ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE
-                          b.putCharSequence(k, part)
-                          val act = AccessibilityNodeInfo.ACTION_SET_TEXT
-                          inp.performAction(act, b)
-                          if (i == w.length) {
-                              handler.postDelayed({
-                                  clickUp(sub)
-                                  if (Build.VERSION.SDK_INT >= 30) {
-                                      val ime = AccessibilityNodeInfo
-                                          .AccessibilityAction
-                                          .ACTION_IME_ENTER.id
-                                      inp.performAction(ime)
-                                  }
-                              }, 80)
-                              handler.postDelayed({ typing = false }, 400)
-                          }
-                      }, (i * 25).toLong())
-                  }
-              }
-
-              override fun onAccessibilityEvent(e: AccessibilityEvent?) {}
-              override fun onInterrupt() {}
           }
           EOF
 
