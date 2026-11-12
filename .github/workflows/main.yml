@@ -71,8 +71,8 @@ jobs:
                   applicationId "com.example.wocabeehelper"
                   minSdk 26
                   targetSdk 34
-                  versionCode 12
-                  versionName "12.0"
+                  versionCode 13
+                  versionName "13.0"
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -161,10 +161,10 @@ jobs:
                           t === 'next'
                       ) {
                           b.click();
-                          return "CLICKED_CONTINUE";
+                          return "CONTINUE";
                       }
                   }
-                  return "NO_INPUT_BOX";
+                  return "NO_INPUT";
               }
 
               const inp = allInputs[0];
@@ -218,9 +218,14 @@ jobs:
                   }
               }
 
-              if (!ans) return "WAITING_FOR_WORD";
+              if (!ans) return "WAIT_WORD";
 
-              function clickCheck() {
+              // Prevent double-submitting the exact same input before WocaBee clears the box
+              if (curVal === ans.toLowerCase()) {
+                  return "SYNCING_POINTS";
+              }
+
+              function clickCheckOnce() {
                   const selList = [
                       '#translateWordSubmitBtn',
                       '#submitBtn',
@@ -265,7 +270,6 @@ jobs:
                       bubbles: true
                   };
                   inp.dispatchEvent(new KeyboardEvent('keydown', ev));
-                  inp.dispatchEvent(new KeyboardEvent('keypress', ev));
                   inp.dispatchEvent(new KeyboardEvent('keyup', ev));
               }
 
@@ -281,14 +285,8 @@ jobs:
                   el.dispatchEvent(new Event('change', { bubbles: true }));
               }
 
-              if (curVal === ans.toLowerCase()) {
-                  clickCheck();
-                  return "CLICKED_CHECK: " + ans;
-              }
-
               window._wocaBusy = true;
               inp.focus();
-              inp.click();
               setVal(inp, '');
 
               let idx = 0;
@@ -296,7 +294,6 @@ jobs:
                   if (idx < ans.length) {
                       const ch = ans[idx];
                       const sub = ans.substring(0, idx + 1);
-                      inp.focus();
                       const kd = {
                           key: ch,
                           char: ch,
@@ -305,22 +302,22 @@ jobs:
                           bubbles: true
                       };
                       inp.dispatchEvent(new KeyboardEvent('keydown', kd));
-                      inp.dispatchEvent(new KeyboardEvent('keypress', kd));
                       setVal(inp, sub);
                       inp.dispatchEvent(new KeyboardEvent('keyup', kd));
                       idx++;
-                      setTimeout(stepChar, 30);
+                      // Ultra-fast 5ms per character
+                      setTimeout(stepChar, 5);
                   } else {
                       setTimeout(function() {
-                          clickCheck();
+                          clickCheckOnce();
                           setTimeout(function() {
                               window._wocaBusy = false;
-                          }, 350);
-                      }, 100);
+                          }, 120);
+                      }, 20);
                   }
               }
               stepChar();
-              return "TYPING: " + foundWord + " -> " + ans;
+              return "FAST: " + foundWord + " -> " + ans;
           })();
           EOF
 
@@ -333,12 +330,15 @@ jobs:
           import android.os.Handler
           import android.os.Looper
           import android.view.Gravity
+          import android.webkit.CookieManager
           import android.webkit.WebChromeClient
+          import android.webkit.WebSettings
           import android.webkit.WebView
           import android.webkit.WebViewClient
           import android.widget.Button
           import android.widget.LinearLayout
           import android.widget.TextView
+          import android.widget.Toast
           import androidx.appcompat.app.AppCompatActivity
 
           class MainActivity : AppCompatActivity() {
@@ -364,7 +364,7 @@ jobs:
                       orientation = LinearLayout.HORIZONTAL
                       gravity = Gravity.CENTER_VERTICAL
                       setBackgroundColor(Color.parseColor("#212121"))
-                      setPadding(12, 12, 12, 12)
+                      setPadding(10, 10, 10, 10)
                   }
 
                   val startBtn = Button(this).apply {
@@ -373,7 +373,7 @@ jobs:
                       setTextColor(Color.WHITE)
                       setOnClickListener {
                           isRunning = true
-                          statusView.text = "RUNNING..."
+                          statusView.text = "TURBO ON"
                           loop()
                       }
                   }
@@ -384,28 +384,53 @@ jobs:
                       setTextColor(Color.WHITE)
                       setOnClickListener {
                           isRunning = false
-                          statusView.text = "STOPPED"
+                          CookieManager.getInstance().flush()
+                          statusView.text = "STOPPED & SAVED"
+                      }
+                  }
+
+                  val syncBtn = Button(this).apply {
+                      text = "SAVE"
+                      setBackgroundColor(Color.parseColor("#1565C0"))
+                      setTextColor(Color.WHITE)
+                      setOnClickListener {
+                          isRunning = false
+                          CookieManager.getInstance().flush()
+                          webView.reload()
+                          Toast.makeText(
+                              this@MainActivity,
+                              "Synced with WocaBee Server!",
+                              Toast.LENGTH_SHORT
+                          ).show()
                       }
                   }
 
                   statusView = TextView(this).apply {
-                      text = "STOPPED"
+                      text = "READY"
                       setTextColor(Color.WHITE)
-                      textSize = 13f
-                      setPadding(20, 0, 0, 0)
+                      textSize = 12f
+                      setPadding(16, 0, 0, 0)
                   }
 
                   bar.addView(startBtn)
                   bar.addView(stopBtn)
+                  bar.addView(syncBtn)
                   bar.addView(statusView)
 
                   webView = WebView(this).apply {
                       settings.javaScriptEnabled = true
                       settings.domStorageEnabled = true
+                      settings.databaseEnabled = true
+                      settings.cacheMode = WebSettings.LOAD_NO_CACHE
                       webViewClient = WebViewClient()
                       webChromeClient = WebChromeClient()
-                      loadUrl("https://wocabee.app/app")
                   }
+
+                  val cm = CookieManager.getInstance()
+                  cm.setAcceptCookie(true)
+                  cm.setAcceptThirdPartyCookies(webView, true)
+
+                  webView.loadUrl("https://wocabee.app/app")
 
                   root.addView(bar, LinearLayout.LayoutParams(-1, -2))
                   root.addView(webView, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -419,7 +444,14 @@ jobs:
                           statusView.text = res.replace("\"", "")
                       }
                   }
-                  handler.postDelayed({ loop() }, 200)
+                  CookieManager.getInstance().flush()
+                  // Runs every 80ms for maximum server-safe speed
+                  handler.postDelayed({ loop() }, 80)
+              }
+
+              override fun onPause() {
+                  super.onPause()
+                  CookieManager.getInstance().flush()
               }
           }
           EOF
