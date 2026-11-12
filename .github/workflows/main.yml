@@ -66,8 +66,8 @@ jobs:
                   applicationId "com.example.wocabeehelper"
                   minSdk 26
                   targetSdk 34
-                  versionCode 5
-                  versionName "5.0"
+                  versionCode 6
+                  versionName "6.0"
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -135,7 +135,9 @@ jobs:
           import android.webkit.WebChromeClient
           import android.webkit.WebView
           import android.webkit.WebViewClient
-          import android.widget.*
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.Toast
           import androidx.appcompat.app.AppCompatActivity
 
           class MainActivity : AppCompatActivity() {
@@ -200,113 +202,7 @@ jobs:
 
               private fun runWebBotLoop() {
                   if (!isBotRunning) return
-                  val js = """
-                  (function(){
-                      if (window._wt) return;
-                      const d = {
-                          'jedna':'one','one':'jedna',
-                          'dvě':'two','dve':'two','two':'dvě',
-                          'tři':'three','tri':'three','three':'tři',
-                          'čtyři':'four','ctyri':'four','four':'čtyři',
-                          'pět':'five','pet':'five','five':'pět',
-                          'šest':'six','sest':'six','six':'šest',
-                          'sedm':'seven','seven':'sedm',
-                          'osm':'eight','eight':'osm',
-                          'devět':'nine','devet':'nine','nine':'devět',
-                          'deset':'ten','ten':'deset'
-                      };
-                      const inp = Array.from(document.querySelectorAll('#translateWordAnswer, input[type=text], textarea, input:not([type])'))
-                          .filter(e => e.offsetParent !== null && !e.disabled && !e.readOnly)[0];
-                      if (!inp) return;
-
-                      const inpRect = inp.getBoundingClientRect();
-                      let bestAns = null;
-                      let bestDist = 999999;
-
-                      // 1. Check dedicated WocaBee question selectors first
-                      const wocaQ = document.querySelector('#translateWordQuestion, #q_word, .question-word, .word-to-translate, #wordToTranslate');
-                      if (wocaQ && wocaQ.offsetParent !== null && wocaQ.innerText) {
-                          const wClean = wocaQ.innerText.trim().toLowerCase().replace(/[^a-záčďéěíňóřšťúůýž]/g, '');
-                          if (d[wClean]) bestAns = d[wClean];
-                      }
-
-                      // 2. Otherwise pick the visible dictionary word physically closest to the input box
-                      if (!bestAns) {
-                          const allEls = document.querySelectorAll('div, span, p, h1, h2, h3, h4, b, strong, label');
-                          for (const el of allEls) {
-                              if (el.offsetParent === null) continue;
-                              const r = el.getBoundingClientRect();
-                              if (r.width === 0 || r.height === 0) continue;
-                              const raw = (el.innerText || '').trim().toLowerCase().replace(/[?.!,]/g, '');
-                              if (d[raw]) {
-                                  const dist = Math.abs(r.bottom - inpRect.top) + Math.abs(r.left - inpRect.left) * 0.2;
-                                  if (dist < bestDist) {
-                                      bestDist = dist;
-                                      bestAns = d[raw];
-                                  }
-                              }
-                          }
-                      }
-
-                      if (bestAns && inp.value !== bestAns) {
-                          window._wt = true;
-                          inp.focus();
-                          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                          if (setter) setter.call(inp, ''); else inp.value = '';
-                          inp.dispatchEvent(new Event('input', {bubbles:true}));
-
-                          let i = 0;
-                          function tc() {
-                              if (i < bestAns.length) {
-                                  const nextVal = bestAns.substring(0, i + 1);
-                                  if (setter) setter.call(inp, nextVal); else inp.value = nextVal;
-                                  inp.dispatchEvent(new KeyboardEvent('keydown', {key: bestAns[i], bubbles:true}));
-                                  inp.dispatchEvent(new Event('input', {bubbles:true}));
-                                  inp.dispatchEvent(new KeyboardEvent('keyup', {key: bestAns[i], bubbles:true}));
-                                  i++;
-                                  setTimeout(tc, 25);
-                              } else {
-                                  inp.dispatchEvent(new Event('change', {bubbles:true}));
-                                  setTimeout(() => {
-                                      // Click Check / Ověřit button
-                                      const checkSelectors = [
-                                          '#translateWordSubmitBtn',
-                                          '#submitBtn',
-                                          'button[type=submit]',
-                                          'input[type=submit]',
-                                          '.btn-success',
-                                          '.btn-primary'
-                                      ];
-                                      let clicked = false;
-                                      for (const sel of checkSelectors) {
-                                          const btn = Array.from(document.querySelectorAll(sel)).find(b => b.offsetParent !== null && !b.disabled);
-                                          if (btn) { btn.click(); clicked = true; break; }
-                                      }
-                                      if (!clicked) {
-                                          const allBtns = Array.from(document.querySelectorAll('button, a.btn, div.btn, span.btn, i.fa-check')).filter(b => b.offsetParent !== null);
-                                          for (const b of allBtns) {
-                                              const t = (b.innerText || b.value || b.title || b.className || '').toLowerCase();
-                                              if (t.includes('ověřit') || t.includes('overiť') || t.includes('check') || t.includes('submit') || t.includes('enter') || t.includes('pokračovat') || t.includes('continue') || t.includes('další')) {
-                                                  b.click();
-                                                  clicked = true;
-                                                  break;
-                                              }
-                                          }
-                                      }
-                                      // Also fire Enter key + Form submit
-                                      const enterOpts = {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true, cancelable:true};
-                                      inp.dispatchEvent(new KeyboardEvent('keydown', enterOpts));
-                                      inp.dispatchEvent(new KeyboardEvent('keypress', enterOpts));
-                                      inp.dispatchEvent(new KeyboardEvent('keyup', enterOpts));
-                                      if (inp.form) inp.form.dispatchEvent(new Event('submit', {bubbles:true, cancelable:true}));
-                                      setTimeout(() => { window._wt = false; }, 350);
-                                  }, 80);
-                              }
-                          }
-                          tc();
-                      }
-                  })();
-                  """.trimIndent()
+                  val js = "javascript:(function(){if(window._wt)return;const d={'jedna':'one','one':'jedna','dvě':'two','dve':'two','two':'dvě','tři':'three','tri':'three','three':'tři','čtyři':'four','ctyri':'four','four':'čtyři','pět':'five','pet':'five','five':'pět','šest':'six','sest':'six','six':'šest','sedm':'seven','seven':'sedm','osm':'eight','eight':'osm','devět':'nine','devet':'nine','nine':'devět','deset':'ten','ten':'deset'};const inp=Array.from(document.querySelectorAll('#translateWordAnswer,input[type=text],textarea,input:not([type])')).filter(e=>e.offsetParent!==null&&!e.disabled)[0];if(!inp)return;const ir=inp.getBoundingClientRect();let ans=null;let bd=999999;const wq=document.querySelector('#translateWordQuestion,#q_word,.question-word,.word-to-translate');if(wq&&wq.offsetParent!==null&&wq.innerText){const wc=wq.innerText.trim().toLowerCase();if(d[wc])ans=d[wc];}if(!ans){for(const el of document.querySelectorAll('div,span,p,h1,h2,h3,h4,b,strong')){if(el.offsetParent===null||el.children.length>0)continue;const r=el.getBoundingClientRect();if(r.width===0||r.height===0)continue;const raw=(el.innerText||'').trim().toLowerCase().replace(/[?.!,]/g,'');if(d[raw]){const dist=Math.abs(r.bottom-ir.top)+Math.abs(r.left-ir.left)*0.2;if(dist<bd){bd=dist;ans=d[raw];}}}}if(ans&&inp.value!==ans){window._wt=true;inp.focus();inp.value='';let i=0;function tc(){if(i<ans.length){inp.value+=ans[i];inp.dispatchEvent(new Event('input',{bubbles:true}));inp.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true}));i++;setTimeout(tc,25);}else{inp.dispatchEvent(new Event('change',{bubbles:true}));setTimeout(()=>{const sb=document.querySelector('#translateWordSubmitBtn,#submitBtn,button[type=submit],.btn-success');if(sb&&sb.offsetParent!==null){sb.click();}else{for(const b of document.querySelectorAll('button,a,div.btn,span.btn')){if(b.offsetParent===null)continue;const t=(b.innerText||b.value||b.className||'').toLowerCase();if(t.includes('ověřit')||t.includes('overiť')||t.includes('check')||t.includes('submit')||t.includes('pokračovat')||t.includes('continue')){b.click();break;}}}inp.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));setTimeout(()=>{window._wt=false;},350);},80);}}tc();}})();"
                   webView.evaluateJavascript(js, null)
                   handler.postDelayed({ runWebBotLoop() }, 200)
               }
@@ -352,8 +248,6 @@ jobs:
               private lateinit var overlayButton: Button
               private val handler = Handler(Looper.getMainLooper())
               private var isCurrentlyTyping = false
-              private var lastTypedAnswer = ""
-              private var lastPromptWord = ""
 
               override fun onServiceConnected() {
                   super.onServiceConnected()
@@ -389,7 +283,6 @@ jobs:
                       }
                       setOnClickListener {
                           isAutoRunning = !isAutoRunning
-                          lastPromptWord = ""
                           updateButtonAppearance()
                       }
                   }
@@ -398,4 +291,95 @@ jobs:
               }
 
               private fun updateButtonAppearance() {
-                  overlayButton.text = if (isAutoRunning) "ST
+                  overlayButton.text = if (isAutoRunning) "STOP" else "START"
+                  overlayButton.setBackgroundColor(Color.parseColor(if (isAutoRunning) "#C62828" else "#2E7D32"))
+              }
+
+              private fun startStateSyncLoop() {
+                  updateButtonAppearance()
+                  if (isAutoRunning && !isCurrentlyTyping) {
+                      rootInActiveWindow?.let { solveScreen(it) }
+                  }
+                  handler.postDelayed({ startStateSyncLoop() }, 180)
+              }
+
+              private fun clickNodeOrParent(node: AccessibilityNodeInfo?) {
+                  var curr = node
+                  while (curr != null) {
+                      if (curr.isClickable) {
+                          curr.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                          return
+                      }
+                      curr = curr.parent
+                  }
+                  node?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+              }
+
+              private fun solveScreen(rootNode: AccessibilityNodeInfo) {
+                  val candidates = mutableListOf<Pair<String, Rect>>()
+                  var inputNode: AccessibilityNodeInfo? = null
+                  var submitButton: AccessibilityNodeInfo? = null
+                  var fallbackButtonBelowInput: AccessibilityNodeInfo? = null
+                  val inputRect = Rect()
+
+                  fun findInput(node: AccessibilityNodeInfo?) {
+                      if (node == null) return
+                      val cls = node.className?.toString() ?: ""
+                      if ((node.isEditable || cls.contains("EditText")) && node.isVisibleToUser) {
+                          inputNode = node
+                          node.getBoundsInScreen(inputRect)
+                      }
+                      for (i in 0 until node.childCount) findInput(node.getChild(i))
+                  }
+                  findInput(rootNode)
+                  val targetInput = inputNode ?: return
+                  val currentInputText = targetInput.text?.toString()?.trim()?.lowercase() ?: ""
+
+                  fun traverse(node: AccessibilityNodeInfo?) {
+                      if (node == null || !node.isVisibleToUser || node == targetInput) return
+                      val rawText = (node.text?.toString() ?: node.contentDescription?.toString() ?: "").trim()
+                      val idName = (node.viewIdResourceName ?: "").lowercase()
+                      val rect = Rect()
+                      node.getBoundsInScreen(rect)
+
+                      if (rawText.isNotEmpty()) {
+                          val clean = rawText.lowercase().replace("?", "").replace("!", "").replace(".", "").trim()
+                          if (clean != currentInputText && dictionary.containsKey(clean)) {
+                              candidates.add(Pair(clean, rect))
+                          }
+                          if (rawText.contains("Check", true) || rawText.contains("Submit", true) || rawText.contains("Ověřit", true) || rawText.contains("Overiť", true) || rawText.contains("Pokračovat", true) || rawText.contains("Continue", true) || idName.contains("submit") || idName.contains("check")) {
+                              submitButton = node
+                          }
+                      }
+
+                      val cls = node.className?.toString() ?: ""
+                      if ((node.isClickable || cls.contains("Button")) && rect.top >= inputRect.bottom - 20 && rect.top < inputRect.bottom + 450) {
+                          if (fallbackButtonBelowInput == null) fallbackButtonBelowInput = node
+                      }
+                      for (i in 0 until node.childCount) traverse(node.getChild(i))
+                  }
+                  traverse(rootNode)
+
+                  val bestPrompt = candidates.minByOrNull { (_, r) ->
+                      abs(r.bottom - inputRect.top) + abs(r.left - inputRect.left) / 4
+                  }?.first ?: return
+
+                  val answer = dictionary[bestPrompt] ?: return
+                  val finalSubmitBtn = submitButton ?: fallbackButtonBelowInput
+
+                  if (currentInputText == answer.lowercase()) {
+                      clickNodeOrParent(finalSubmitBtn)
+                      if (Build.VERSION.SDK_INT >= 30) {
+                          targetInput.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+                      }
+                      return
+                  }
+                  typeFast(targetInput, answer, finalSubmitBtn)
+              }
+
+              private fun typeFast(inputNode: AccessibilityNodeInfo, word: String, submitButton: AccessibilityNodeInfo?) {
+                  isCurrentlyTyping = true
+                  inputNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                  inputNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+
+   
