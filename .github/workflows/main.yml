@@ -9,16 +9,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Generate WocaAuto Project (1-10 Preloaded + Direct Auto-Typer)
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: Create Android Project Files
         run: |
           rm -rf *
           mkdir -p app/src/main/java/com/example/wocabeehelper
           mkdir -p app/src/main/res/xml
 
-          cat << 'EOF' > gradle.properties
-          android.useAndroidX=true
-          org.gradle.jvmargs=-Xmx2048m
-          EOF
+          printf "android.useAndroidX=true\norg.gradle.jvmargs=-Xmx2048m\n" > gradle.properties
 
           cat << 'EOF' > settings.gradle
           pluginManagement {
@@ -51,28 +59,22 @@ jobs:
               id 'com.android.application'
               id 'org.jetbrains.kotlin.android'
           }
-
           android {
               namespace 'com.example.wocabeehelper'
               compileSdk 34
-
               defaultConfig {
                   applicationId "com.example.wocabeehelper"
                   minSdk 26
                   targetSdk 34
-                  versionCode 3
-                  versionName "3.0"
+                  versionCode 4
+                  versionName "4.0"
               }
-
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
                   targetCompatibility JavaVersion.VERSION_17
               }
-              kotlinOptions {
-                  jvmTarget = '17'
-              }
+              kotlinOptions { jvmTarget = '17' }
           }
-
           dependencies {
               implementation 'androidx.appcompat:appcompat:1.6.1'
               implementation 'androidx.core:core-ktx:1.12.0'
@@ -81,23 +83,19 @@ jobs:
 
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
               <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
               <application
                   android:allowBackup="true"
                   android:label="WocaAuto"
                   android:usesCleartextTraffic="true"
                   android:theme="@style/Theme.AppCompat.Light.NoActionBar">
-
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
-
                   <service
                       android:name=".WocaAccessibilityService"
                       android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
@@ -141,7 +139,6 @@ jobs:
           import androidx.appcompat.app.AppCompatActivity
 
           class MainActivity : AppCompatActivity() {
-
               private lateinit var webView: WebView
               private var isBotRunning = false
               private val handler = Handler(Looper.getMainLooper())
@@ -149,30 +146,34 @@ jobs:
               @SuppressLint("SetJavaScriptEnabled")
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-
-                  val mainLayout = LinearLayout(this).apply {
-                      orientation = LinearLayout.VERTICAL
-                  }
-
+                  val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
                   val topBar = LinearLayout(this).apply {
                       orientation = LinearLayout.HORIZONTAL
                       gravity = Gravity.CENTER
                       setBackgroundColor(Color.parseColor("#212121"))
-                      setPadding(16, 16, 16, 16)
+                      setPadding(12, 12, 12, 12)
                   }
-
                   val startBtn = Button(this).apply {
                       text = "START"
                       setBackgroundColor(Color.parseColor("#2E7D32"))
                       setTextColor(Color.WHITE)
+                      setOnClickListener {
+                          isBotRunning = true
+                          WocaAccessibilityService.isAutoRunning = true
+                          Toast.makeText(this@MainActivity, "STARTED (1-10)", Toast.LENGTH_SHORT).show()
+                          runWebBotLoop()
+                      }
                   }
-
                   val stopBtn = Button(this).apply {
                       text = "STOP"
                       setBackgroundColor(Color.parseColor("#C62828"))
                       setTextColor(Color.WHITE)
+                      setOnClickListener {
+                          isBotRunning = false
+                          WocaAccessibilityService.isAutoRunning = false
+                          Toast.makeText(this@MainActivity, "STOPPED", Toast.LENGTH_SHORT).show()
+                      }
                   }
-
                   val overlayBtn = Button(this).apply {
                       text = "OVERLAY"
                       setBackgroundColor(Color.parseColor("#1565C0"))
@@ -181,20 +182,6 @@ jobs:
                           startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                       }
                   }
-
-                  startBtn.setOnClickListener {
-                      isBotRunning = true
-                      WocaAccessibilityService.isAutoRunning = true
-                      Toast.makeText(this, "Auto-Typer STARTED (1-10)", Toast.LENGTH_SHORT).show()
-                      runWebBotLoop()
-                  }
-
-                  stopBtn.setOnClickListener {
-                      isBotRunning = false
-                      WocaAccessibilityService.isAutoRunning = false
-                      Toast.makeText(this, "Auto-Typer STOPPED", Toast.LENGTH_SHORT).show()
-                  }
-
                   topBar.addView(startBtn)
                   topBar.addView(stopBtn)
                   topBar.addView(overlayBtn)
@@ -206,92 +193,15 @@ jobs:
                       webChromeClient = WebChromeClient()
                       loadUrl("https://wocabee.app/app")
                   }
-
-                  mainLayout.addView(topBar, LinearLayout.LayoutParams(
-                      LinearLayout.LayoutParams.MATCH_PARENT,
-                      LinearLayout.LayoutParams.WRAP_CONTENT
-                  ))
-                  mainLayout.addView(webView, LinearLayout.LayoutParams(
-                      LinearLayout.LayoutParams.MATCH_PARENT,
-                      0,
-                      1f
-                  ))
-
+                  mainLayout.addView(topBar, LinearLayout.LayoutParams(-1, -2))
+                  mainLayout.addView(webView, LinearLayout.LayoutParams(-1, 0, 1f))
                   setContentView(mainLayout)
               }
 
               private fun runWebBotLoop() {
                   if (!isBotRunning) return
-
-                  val jsCode = """
-                  (function() {
-                      const dict = {
-                          "jedna": "one", "one": "jedna",
-                          "dvě": "two", "dve": "two", "two": "dvě",
-                          "tři": "three", "tri": "three", "three": "tři",
-                          "čtyři": "four", "ctyri": "four", "four": "čtyři",
-                          "pět": "five", "pet": "five", "five": "pět",
-                          "šest": "six", "sest": "six", "six": "šest",
-                          "sedm": "seven", "seven": "sedm",
-                          "osm": "eight", "eight": "osm",
-                          "devět": "nine", "devet": "nine", "nine": "devět",
-                          "deset": "ten", "ten": "deset"
-                      };
-
-                      // Find any visible input field
-                      const inputs = Array.from(document.querySelectorAll('input[type="text"], textarea, input:not([type])'))
-                          .filter(el => el.offsetParent !== null);
-                      if (inputs.length === 0) return;
-                      const input = inputs[0];
-
-                      // Scan page elements for matching prompt word
-                      const elements = Array.from(document.querySelectorAll('div, span, p, h1, h2, h3, h4, b, strong'));
-                      let answer = null;
-                      for (const el of elements) {
-                          if (el.children.length === 0 && el.innerText) {
-                              const clean = el.innerText.trim().toLowerCase();
-                              if (dict[clean]) {
-                                  answer = dict[clean];
-                                  break;
-                              }
-                          }
-                      }
-
-                      if (answer && input.value !== answer && !window.__wocaTyping) {
-                          window.__wocaTyping = true;
-                          input.focus();
-                          input.value = "";
-                          let i = 0;
-                          function typeChar() {
-                              if (i < answer.length) {
-                                  input.value += answer[i];
-                                  input.dispatchEvent(new Event('input', { bubbles: true }));
-                                  input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-                                  i++;
-                                  setTimeout(typeChar, 20);
-                              } else {
-                                  input.dispatchEvent(new Event('change', { bubbles: true }));
-                                  setTimeout(() => {
-                                      const btns = Array.from(document.querySelectorAll('button, a, input[type="submit"]'));
-                                      for (const b of btns) {
-                                          const t = (b.innerText || b.value || "").toLowerCase();
-                                          if (t.includes("ověřit") || t.includes("overiť") || t.includes("check") || t.includes("submit") || b.id.toLowerCase().includes("submit") || b.className.toLowerCase().includes("submit")) {
-                                              b.click();
-                                              break;
-                                          }
-                                      }
-                                      // Also simulate Enter key
-                                      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-                                      window.__wocaTyping = false;
-                                  }, 60);
-                              }
-                          }
-                          typeChar();
-                      }
-                  })();
-                  """.trimIndent()
-
-                  webView.evaluateJavascript(jsCode, null)
+                  val js = "javascript:(function(){const d={'jedna':'one','one':'jedna','dvě':'two','dve':'two','two':'dvě','tři':'three','tri':'three','three':'tři','čtyři':'four','ctyri':'four','four':'čtyři','pět':'five','pet':'five','five':'pět','šest':'six','sest':'six','six':'šest','sedm':'seven','seven':'sedm','osm':'eight','eight':'osm','devět':'nine','devet':'nine','nine':'devět','deset':'ten','ten':'deset'};const inp=Array.from(document.querySelectorAll('input[type=text],textarea,input:not([type])')).filter(e=>e.offsetParent!==null)[0];if(!inp)return;let ans=null;for(const el of document.querySelectorAll('div,span,p,h1,h2,h3,h4,b,strong')){if(el.children.length===0&&el.innerText){const c=el.innerText.trim().toLowerCase();if(d[c]){ans=d[c];break;}}}if(ans&&inp.value!==ans&&!window._wt){window._wt=true;inp.focus();inp.value='';let i=0;function tc(){if(i<ans.length){inp.value+=ans[i];inp.dispatchEvent(new Event('input',{bubbles:true}));inp.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true}));i++;setTimeout(tc,20);}else{inp.dispatchEvent(new Event('change',{bubbles:true}));setTimeout(()=>{for(const b of document.querySelectorAll('button,a,input[type=submit]')){const t=(b.innerText||b.value||'').toLowerCase();if(t.includes('ověřit')||t.includes('overiť')||t.includes('check')||t.includes('submit')||b.id.toLowerCase().includes('submit')){b.click();break;}}window._wt=false;},60);}}tc();}})();"
+                  webView.evaluateJavascript(js, null)
                   handler.postDelayed({ runWebBotLoop() }, 250)
               }
           }
@@ -314,7 +224,6 @@ jobs:
           import android.widget.Button
 
           class WocaAccessibilityService : AccessibilityService() {
-
               companion object {
                   var isAutoRunning = false
                   val dictionary = mutableMapOf(
@@ -330,7 +239,6 @@ jobs:
                       "deset" to "ten", "ten" to "deset"
                   )
               }
-
               private lateinit var windowManager: WindowManager
               private lateinit var overlayButton: Button
               private val handler = Handler(Looper.getMainLooper())
@@ -339,7 +247,6 @@ jobs:
               override fun onServiceConnected() {
                   super.onServiceConnected()
                   windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-
                   val params = WindowManager.LayoutParams(
                       WindowManager.LayoutParams.WRAP_CONTENT,
                       WindowManager.LayoutParams.WRAP_CONTENT,
@@ -351,70 +258,42 @@ jobs:
                       x = 40
                       y = 300
                   }
-
                   overlayButton = Button(this).apply {
                       text = "START"
                       setBackgroundColor(Color.parseColor("#2E7D32"))
                       setTextColor(Color.WHITE)
-
-                      var initialX = 0
-                      var initialY = 0
-                      var touchX = 0f
-                      var touchY = 0f
-                      var moved = false
-
+                      var initialX = 0; var initialY = 0; var touchX = 0f; var touchY = 0f; var moved = false
                       setOnTouchListener { _, event ->
                           when (event.action) {
-                              MotionEvent.ACTION_DOWN -> {
-                                  initialX = params.x
-                                  initialY = params.y
-                                  touchX = event.rawX
-                                  touchY = event.rawY
-                                  moved = false
-                                  true
-                              }
+                              MotionEvent.ACTION_DOWN -> { initialX = params.x; initialY = params.y; touchX = event.rawX; touchY = event.rawY; moved = false; true }
                               MotionEvent.ACTION_MOVE -> {
-                                  val dx = (event.rawX - touchX).toInt()
-                                  val dy = (event.rawY - touchY).toInt()
+                                  val dx = (event.rawX - touchX).toInt(); val dy = (event.rawY - touchY).toInt()
                                   if (kotlin.math.abs(dx) > 10 || kotlin.math.abs(dy) > 10) moved = true
-                                  params.x = initialX + dx
-                                  params.y = initialY + dy
-                                  windowManager.updateViewLayout(this, params)
-                                  true
+                                  params.x = initialX + dx; params.y = initialY + dy
+                                  windowManager.updateViewLayout(this, params); true
                               }
-                              MotionEvent.ACTION_UP -> {
-                                  if (!moved) performClick()
-                                  true
-                              }
+                              MotionEvent.ACTION_UP -> { if (!moved) performClick(); true }
                               else -> false
                           }
                       }
-
                       setOnClickListener {
                           isAutoRunning = !isAutoRunning
                           updateButtonAppearance()
                       }
                   }
-
                   windowManager.addView(overlayButton, params)
                   startStateSyncLoop()
               }
 
               private fun updateButtonAppearance() {
-                  if (isAutoRunning) {
-                      overlayButton.text = "STOP"
-                      overlayButton.setBackgroundColor(Color.parseColor("#C62828"))
-                  } else {
-                      overlayButton.text = "START"
-                      overlayButton.setBackgroundColor(Color.parseColor("#2E7D32"))
-                  }
+                  overlayButton.text = if (isAutoRunning) "STOP" else "START"
+                  overlayButton.setBackgroundColor(Color.parseColor(if (isAutoRunning) "#C62828" else "#2E7D32"))
               }
 
               private fun startStateSyncLoop() {
                   updateButtonAppearance()
                   if (isAutoRunning && !isCurrentlyTyping) {
-                      val root = rootInActiveWindow
-                      if (root != null) solveScreen(root)
+                      rootInActiveWindow?.let { solveScreen(it) }
                   }
                   handler.postDelayed({ startStateSyncLoop() }, 200)
               }
@@ -423,43 +302,53 @@ jobs:
                   val allTextNodes = mutableListOf<String>()
                   var inputNode: AccessibilityNodeInfo? = null
                   var submitButton: AccessibilityNodeInfo? = null
-
                   fun traverse(node: AccessibilityNodeInfo?) {
                       if (node == null) return
                       val cls = node.className?.toString() ?: ""
-                      if (node.isEditable || cls.contains("EditText")) {
-                          inputNode = node
-                      }
+                      if (node.isEditable || cls.contains("EditText")) inputNode = node
                       val rawText = node.text?.toString()?.trim() ?: node.contentDescription?.toString()?.trim() ?: ""
                       if (rawText.isNotEmpty()) {
                           allTextNodes.add(rawText)
-                          if (rawText.equals("Check", ignoreCase = true) ||
-                              rawText.equals("Submit", ignoreCase = true) ||
-                              rawText.equals("Ověřit", ignoreCase = true) ||
-                              rawText.equals("Overiť", ignoreCase = true)
-                          ) {
-                              submitButton = node
-                          }
+                          if (rawText.equals("Check", true) || rawText.equals("Submit", true) || rawText.equals("Ověřit", true) || rawText.equals("Overiť", true)) submitButton = node
                       }
-                      for (i in 0 until node.childCount) {
-                          traverse(node.getChild(i))
-                      }
+                      for (i in 0 until node.childCount) traverse(node.getChild(i))
                   }
-
                   traverse(rootNode)
-
                   val targetInput = inputNode ?: return
                   for (screenText in allTextNodes) {
-                      val cleanPrompt = screenText.lowercase()
-                      val answer = dictionary[cleanPrompt]
-                      if (answer != null) {
-                          typeFast(targetInput, answer, submitButton)
-                          break
-                      }
+                      val answer = dictionary[screenText.lowercase()]
+                      if (answer != null) { typeFast(targetInput, answer, submitButton); break }
                   }
               }
 
-              private fun typeFast(
-                  inputNode: AccessibilityNodeInfo,
-                  word: String,
-             
+              private fun typeFast(inputNode: AccessibilityNodeInfo, word: String, submitButton: AccessibilityNodeInfo?) {
+                  isCurrentlyTyping = true
+                  inputNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                  for (i in 1..word.length) {
+                      val partial = word.substring(0, i)
+                      handler.postDelayed({
+                          val args = Bundle()
+                          args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, partial)
+                          inputNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                          if (i == word.length) {
+                              handler.postDelayed({ submitButton?.performAction(AccessibilityNodeInfo.ACTION_CLICK) }, 60)
+                              handler.postDelayed({ isCurrentlyTyping = false }, 350)
+                          }
+                      }, (i * 20).toLong())
+                  }
+              }
+
+              override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+              override fun onInterrupt() {}
+          }
+          EOF
+
+      - name: Build Debug APK
+        run: gradle :app:assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WocaAuto-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          
