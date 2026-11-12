@@ -1,2 +1,0 @@
-# Wocabee-bot
-Idk
