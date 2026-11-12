@@ -71,8 +71,8 @@ jobs:
                   applicationId "com.example.wocabeehelper"
                   minSdk 26
                   targetSdk 34
-                  versionCode 14
-                  versionName "14.0"
+                  versionCode 15
+                  versionName "15.0"
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -109,10 +109,11 @@ jobs:
           cat << 'EOF' > app/src/main/res/raw/bot.js
           (function() {
               if (window._wocaBusy) return "BUSY";
-              const isFast = (window._wocaFast !== false);
-              const charDelay = isFast ? 2 : 30;
-              const checkDelay = isFast ? 15 : 100;
-              const cooldown = isFast ? 90 : 350;
+              const isFast = (window._wocaFast === true);
+
+              function rand(min, max) {
+                  return Math.floor(Math.random() * (max - min + 1)) + min;
+              }
 
               const dict = {
                   "nula": "zero", "zero": "nula",
@@ -290,37 +291,45 @@ jobs:
               }
 
               window._wocaBusy = true;
-              inp.focus();
-              setVal(inp, '');
+              const startPause = isFast ? 5 : rand(350, 750);
 
-              let idx = 0;
-              function stepChar() {
-                  if (idx < ans.length) {
-                      const ch = ans[idx];
-                      const sub = ans.substring(0, idx + 1);
-                      const kd = {
-                          key: ch,
-                          char: ch,
-                          keyCode: ch.charCodeAt(0),
-                          which: ch.charCodeAt(0),
-                          bubbles: true
-                      };
-                      inp.dispatchEvent(new KeyboardEvent('keydown', kd));
-                      setVal(inp, sub);
-                      inp.dispatchEvent(new KeyboardEvent('keyup', kd));
-                      idx++;
-                      setTimeout(stepChar, charDelay);
-                  } else {
-                      setTimeout(function() {
-                          clickCheckOnce();
+              setTimeout(function() {
+                  inp.focus();
+                  setVal(inp, '');
+                  let idx = 0;
+
+                  function stepChar() {
+                      if (idx < ans.length) {
+                          const ch = ans[idx];
+                          const sub = ans.substring(0, idx + 1);
+                          const kd = {
+                              key: ch,
+                              char: ch,
+                              keyCode: ch.charCodeAt(0),
+                              which: ch.charCodeAt(0),
+                              bubbles: true
+                          };
+                          inp.dispatchEvent(new KeyboardEvent('keydown', kd));
+                          setVal(inp, sub);
+                          inp.dispatchEvent(new KeyboardEvent('keyup', kd));
+                          idx++;
+                          const nextCharDelay = isFast ? 2 : rand(65, 145);
+                          setTimeout(stepChar, nextCharDelay);
+                      } else {
+                          const preSubmitDelay = isFast ? 15 : rand(220, 480);
                           setTimeout(function() {
-                              window._wocaBusy = false;
-                          }, cooldown);
-                      }, checkDelay);
+                              clickCheckOnce();
+                              const afterSubmitWait = isFast ? 90 : rand(650, 1150);
+                              setTimeout(function() {
+                                  window._wocaBusy = false;
+                              }, afterSubmitWait);
+                          }, preSubmitDelay);
+                      }
                   }
-              }
-              stepChar();
-              return (isFast ? "2ms: " : "NORM: ") + ans;
+                  stepChar();
+              }, startPause);
+
+              return (isFast ? "2ms: " : "SAFE: ") + ans;
           })();
           EOF
 
@@ -348,7 +357,7 @@ jobs:
               private lateinit var webView: WebView
               private lateinit var statusView: TextView
               private var isRunning = false
-              private var isFastMode = true
+              private var isFastMode = false
               private val handler = Handler(Looper.getMainLooper())
               private var botScript = ""
 
@@ -378,7 +387,7 @@ jobs:
                       setTextColor(Color.WHITE)
                       setOnClickListener {
                           isRunning = true
-                          statusView.text = if (isFastMode) "FAST" else "NORM"
+                          statusView.text = if (isFastMode) "FAST" else "SAFE"
                           loop()
                       }
                   }
@@ -396,9 +405,9 @@ jobs:
                   }
 
                   val modeBtn = Button(this).apply {
-                      text = "FAST (2ms)"
+                      text = "SAFE MODE"
                       textSize = 12f
-                      setBackgroundColor(Color.parseColor("#E65100"))
+                      setBackgroundColor(Color.parseColor("#00695C"))
                       setTextColor(Color.WHITE)
                       setOnClickListener {
                           isFastMode = !isFastMode
@@ -406,8 +415,8 @@ jobs:
                               text = "FAST (2ms)"
                               setBackgroundColor(Color.parseColor("#E65100"))
                           } else {
-                              text = "NORMAL"
-                              setBackgroundColor(Color.parseColor("#455A64"))
+                              text = "SAFE MODE"
+                              setBackgroundColor(Color.parseColor("#00695C"))
                           }
                       }
                   }
@@ -471,7 +480,7 @@ jobs:
                       }
                   }
                   CookieManager.getInstance().flush()
-                  val delay = if (isFastMode) 50L else 200L
+                  val delay = if (isFastMode) 50L else 250L
                   handler.postDelayed({ loop() }, delay)
               }
 
