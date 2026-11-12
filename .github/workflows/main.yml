@@ -9,8 +9,381 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Generate Full Android Project Structure
+        run: |
+          rm -rf *
+          mkdir -p app/src/main/java/com/example/wocabeehelper
+          mkdir -p app/src/main/res/xml
+
+          cat << 'EOF' > gradle.properties
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2048m
+          EOF
+
+          cat << 'EOF' > settings.gradle
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "WocaAuto"
+          include ':app'
+          EOF
+
+          cat << 'EOF' > build.gradle
+          plugins {
+              id 'com.android.application' version '8.2.0' apply false
+              id 'org.jetbrains.kotlin.android' version '1.9.20' apply false
+          }
+          EOF
+
+          cat << 'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
+
+          android {
+              namespace 'com.example.wocabeehelper'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId "com.example.wocabeehelper"
+                  minSdk 26
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = '17'
+              }
+          }
+
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'androidx.core:core-ktx:1.12.0'
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+              <application
+                  android:allowBackup="true"
+                  android:label="WocaAuto"
+                  android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
+
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+
+                  <service
+                      android:name=".WocaAccessibilityService"
+                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.accessibilityservice.AccessibilityService" />
+                      </intent-filter>
+                      <meta-data
+                          android:name="android.accessibilityservice"
+                          android:resource="@xml/accessibility_service_config" />
+                  </service>
+              </application>
+          </manifest>
+          EOF
+
+          cat << 'EOF' > app/src/main/res/xml/accessibility_service_config.xml
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
+              android:canPerformGestures="true"
+              android:canRetrieveWindowContent="true"
+              android:notificationTimeout="50" />
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/example/wocabeehelper/MainActivity.kt
+          package com.example.wocabeehelper
+
+          import android.content.Intent
+          import android.graphics.Color
+          import android.net.Uri
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.view.Gravity
+          import android.widget.*
+          import androidx.appcompat.app.AppCompatActivity
+
+          class MainActivity : AppCompatActivity() {
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+
+                  val layout = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      gravity = Gravity.CENTER
+                      setPadding(60, 60, 60, 60)
+                  }
+
+                  val statusText = TextView(this).apply {
+                      text = "Status: STOPPED"
+                      textSize = 20f
+                      gravity = Gravity.CENTER
+                      setPadding(0, 0, 0, 40)
+                  }
+
+                  val startButton = Button(this).apply {
+                      text = "START"
+                      textSize = 18f
+                      setBackgroundColor(Color.parseColor("#2E7D32"))
+                      setTextColor(Color.WHITE)
+                      setOnClickListener {
+                          WocaAccessibilityService.isAutoRunning = true
+                          statusText.text = "Status: RUNNING (Switch to WocaBee)"
+                      }
+                  }
+
+                  val stopButton = Button(this).apply {
+                      text = "STOP"
+                      textSize = 18f
+                      setBackgroundColor(Color.parseColor("#C62828"))
+                      setTextColor(Color.WHITE)
+                      setOnClickListener {
+                          WocaAccessibilityService.isAutoRunning = false
+                          statusText.text = "Status: STOPPED"
+                      }
+                  }
+
+                  val permissionButton = Button(this).apply {
+                      text = "1. Grant Overlay & Accessibility"
+                      setOnClickListener {
+                          if (!Settings.canDrawOverlays(this@MainActivity)) {
+                              startActivity(
+                                  Intent(
+                                      Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                      Uri.parse("package:$packageName")
+                                  )
+                              )
+                          } else {
+                              startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                          }
+                      }
+                  }
+
+                  layout.addView(statusText)
+                  layout.addView(startButton)
+                  layout.addView(stopButton)
+                  layout.addView(permissionButton)
+
+                  setContentView(layout)
+              }
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/example/wocabeehelper/WocaAccessibilityService.kt
+          package com.example.wocabeehelper
+
+          import android.accessibilityservice.AccessibilityService
+          import android.graphics.Color
+          import android.graphics.PixelFormat
+          import android.os.Bundle
+          import android.os.Handler
+          import android.os.Looper
+          import android.view.Gravity
+          import android.view.MotionEvent
+          import android.view.WindowManager
+          import android.view.accessibility.AccessibilityEvent
+          import android.view.accessibility.AccessibilityNodeInfo
+          import android.widget.Button
+
+          class WocaAccessibilityService : AccessibilityService() {
+
+              companion object {
+                  var isAutoRunning = false
+                  val dictionary = mutableMapOf(
+                      "pes" to "dog",
+                      "kočka" to "cat",
+                      "dům" to "house",
+                      "auto" to "car",
+                      "škola" to "school"
+                  )
+              }
+
+              private lateinit var windowManager: WindowManager
+              private lateinit var overlayButton: Button
+              private val handler = Handler(Looper.getMainLooper())
+              private var isCurrentlyTyping = false
+
+              override fun onServiceConnected() {
+                  super.onServiceConnected()
+                  windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
+                  val params = WindowManager.LayoutParams(
+                      WindowManager.LayoutParams.WRAP_CONTENT,
+                      WindowManager.LayoutParams.WRAP_CONTENT,
+                      WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                      PixelFormat.TRANSLUCENT
+                  ).apply {
+                      gravity = Gravity.TOP or Gravity.START
+                      x = 40
+                      y = 300
+                  }
+
+                  overlayButton = Button(this).apply {
+                      text = "START"
+                      setBackgroundColor(Color.parseColor("#2E7D32"))
+                      setTextColor(Color.WHITE)
+
+                      var initialX = 0
+                      var initialY = 0
+                      var touchX = 0f
+                      var touchY = 0f
+
+                      setOnTouchListener { _, event ->
+                          when (event.action) {
+                              MotionEvent.ACTION_DOWN -> {
+                                  initialX = params.x
+                                  initialY = params.y
+                                  touchX = event.rawX
+                                  touchY = event.rawY
+                                  false
+                              }
+                              MotionEvent.ACTION_MOVE -> {
+                                  params.x = initialX + (event.rawX - touchX).toInt()
+                                  params.y = initialY + (event.rawY - touchY).toInt()
+                                  windowManager.updateViewLayout(this, params)
+                                  true
+                              }
+                              else -> false
+                          }
+                      }
+
+                      setOnClickListener {
+                          isAutoRunning = !isAutoRunning
+                          updateButtonAppearance()
+                          if (isAutoRunning) runBotLoop()
+                      }
+                  }
+
+                  windowManager.addView(overlayButton, params)
+                  startStateSyncLoop()
+              }
+
+              private fun updateButtonAppearance() {
+                  if (isAutoRunning) {
+                      overlayButton.text = "STOP"
+                      overlayButton.setBackgroundColor(Color.parseColor("#C62828"))
+                  } else {
+                      overlayButton.text = "START"
+                      overlayButton.setBackgroundColor(Color.parseColor("#2E7D32"))
+                  }
+              }
+
+              private fun startStateSyncLoop() {
+                  updateButtonAppearance()
+                  if (isAutoRunning && !isCurrentlyTyping) {
+                      runBotLoop()
+                  }
+                  handler.postDelayed({ startStateSyncLoop() }, 300)
+              }
+
+              private fun runBotLoop() {
+                  if (!isAutoRunning || isCurrentlyTyping) return
+                  val rootNode = rootInActiveWindow ?: return
+                  solveScreen(rootNode)
+              }
+
+              private fun solveScreen(rootNode: AccessibilityNodeInfo) {
+                  val allTextNodes = mutableListOf<String>()
+                  var inputNode: AccessibilityNodeInfo? = null
+                  var submitButton: AccessibilityNodeInfo? = null
+
+                  fun traverse(node: AccessibilityNodeInfo?) {
+                      if (node == null) return
+                      val cls = node.className?.toString() ?: ""
+                      if (cls.contains("EditText")) {
+                          inputNode = node
+                      } else if (node.text != null) {
+                          val t = node.text.toString().trim()
+                          if (t.isNotEmpty()) allTextNodes.add(t)
+                          if (t.equals("Check", ignoreCase = true) ||
+                              t.equals("Submit", ignoreCase = true) ||
+                              t.equals("Ověřit", ignoreCase = true) ||
+                              t.equals("Overiť", ignoreCase = true)
+                          ) {
+                              submitButton = node
+                          }
+                      }
+                      for (i in 0 until node.childCount) {
+                          traverse(node.getChild(i))
+                      }
+                  }
+
+                  traverse(rootNode)
+
+                  val targetInput = inputNode ?: return
+                  for (screenText in allTextNodes) {
+                      val cleanPrompt = screenText.lowercase()
+                      val answer = dictionary[cleanPrompt]
+                          ?: dictionary.entries.firstOrNull { it.value.lowercase() == cleanPrompt }?.key
+
+                      if (answer != null) {
+                          typeFast(targetInput, answer, submitButton)
+                          break
+                      }
+                  }
+              }
+
+              private fun typeFast(
+                  inputNode: AccessibilityNodeInfo,
+                  word: String,
+                  submitButton: AccessibilityNodeInfo?
+              ) {
+                  isCurrentlyTyping = true
+                  inputNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+
+                  for (i in 1..word.length) {
+                      val partial = word.substring(0, i)
+                      handler.postDelayed({
+                          val args = Bundle()
+                          args.putCharSequence(
+                              AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                              partial
+                          )
+                          inputNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+
+                          if (i == word.length) {
+                              submitButton?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                              handler.postDelayed({ isCurrentlyTyping = false }, 250)
+                          }
+                      }, (i * 25).toLong())
+                  }
+              }
+
+              override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+              override fun onInterrupt() {}
+          }
+          EOF
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -24,7 +397,7 @@ jobs:
           gradle-version: '8.5'
 
       - name: Build Debug APK
-        run: gradle assembleDebug
+        run: gradle :app:assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
